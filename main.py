@@ -1,38 +1,55 @@
-import math
 import numpy as np
-from scipy.optimize import fsolve
+from scipy.optimize import minimize_scalar
+from Simulation.ball import simulate_2d_motion_two_balls  # make sure this import path is correct
 
-# Define the equation as a function of theta (with additional fixed parameters)
-def make_equation(x1, y1, V1, V2):
-    def equation(theta):
-        return x1 * 3 * np.cos(theta) + V1 - y1 * 3 * np.sin(theta) + V2
-    return equation
+# Target (moving object)
+target_pos = np.array([90.0, 100.0])
+target_vel = np.array([-3.0, 4.0])  # moving left
 
-def hittter_mech(target_x0, target_y0, target_vx=None, target_vy=None):
-    # Upside is +ve , right is +ve
-    shooter_x, shooter_y = 0, 0
-    g = 9.8
-    v = 3  # m/s
+# Shooter (your position)
+shooter_pos = np.array([0.0, 0.0])
+projectile_speed = 9.0  # you control this
 
-    # Placeholder values for target velocity
-    V1 = target_vx if target_vx is not None else 0
-    V2 = target_vy if target_vy is not None else 0
+# Function to minimize: distance between positions at time t
+def time_to_hit(theta):
+    # Projectile direction (unit vector)
+    dir_vector = np.array([np.cos(theta), np.sin(theta)])
+    
+    # Relative velocity
+    relative_velocity = projectile_speed * dir_vector - target_vel
 
-    x1 = target_x0
-    y1 = target_y0
+    # If relative velocity is too small, can't hit
+    if np.linalg.norm(relative_velocity) < 1e-6:
+        return 1e6
 
-    # Initial guess (in radians)
-    initial_guess = np.radians(45)  # 45 degrees
+    # Time to close the gap
+    r = target_pos - shooter_pos
+    t = np.dot(r, relative_velocity) / np.dot(relative_velocity, relative_velocity)
 
-    # Use fsolve to solve for theta
-    theta_solution = fsolve(make_equation(x1, y1, V1, V2), initial_guess)[0]
+    if t < 0:
+        return 1e6  # can't hit in the past
 
-    # Convert to degrees
-    theta_degrees = np.degrees(theta_solution)
+    # Final positions
+    bullet_pos = shooter_pos + projectile_speed * dir_vector * t
+    target_final = target_pos + target_vel * t
 
-    print(f"Theta (radians): {theta_solution}")
-    print(f"Theta (degrees): {theta_degrees}")
-    return theta_degrees  # optional return
+    # Miss distance
+    return np.linalg.norm(bullet_pos - target_final)
 
-if __name__ == "__main__":
-    hittter_mech(1, 1, target_vx=2, target_vy=0)
+# Find optimal angle
+res = minimize_scalar(time_to_hit, bounds=(0, np.pi), method='bounded')
+theta_opt = res.x
+
+# Corrected direction vector (USE radians here)
+dir_vector = np.array([np.cos(theta_opt), np.sin(theta_opt)])
+projectile_velocity = dir_vector * projectile_speed  # scale by speed
+
+# Simulate both moving objects
+simulate_2d_motion_two_balls(
+    pos1=target_pos, vel1=target_vel,
+    pos2=shooter_pos, vel2=projectile_velocity,
+    total_time=5, dt=0.05
+)
+
+print(f"✅ Optimal angle to fire (degrees): {np.degrees(theta_opt):.2f}")
+print(f"✅ Minimum miss distance: {res.fun:.6f}")
